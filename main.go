@@ -45,6 +45,7 @@ func handleconn(conn net.Conn, wg *sync.WaitGroup ){
 				fmt.Printf("atoi line error %s",err)
 				break
 			}
+			cmdArgs := []string {} 
 			for range args*2 {
 				arguements, err := reader.ReadString('\n')
 				if err != nil {
@@ -57,19 +58,51 @@ func handleconn(conn net.Conn, wg *sync.WaitGroup ){
 					continue
 				}
 				data = strings.TrimSpace(arguements)
+				cmdArgs = append(cmdArgs, data)
 				fmt.Printf("%s\n",data)
 			}
-			resp := decideResp(data)
+			resp := decideResp(cmdArgs)
 			conn.Write([]byte(resp))
 		}
 	}	
 }
 
-func decideResp(data string)(string){
+func decideResp(cmdArgs[] string)(string){
+	data := cmdArgs[0]
 	switch data{
-		case "PING":
+		case "ping", "PING":
 			return "+PONG\r\n"
+		case "echo", "ECHO":
+			return "+" + cmdArgs[1] + "\r\n"
+		case "set", "SET":
+			return setData(cmdArgs)
+		case "get", "GET":
+			return getData(cmdArgs)
+		case "config", "CONFIG":
+			return "*0\r\n"
 		default:
 			return "+65\r\n"
 	}
+}
+
+var (
+	data = make(map[string]string)
+	dataMutex sync.RWMutex
+)
+func getData(cmdArgs[] string) (string){
+	dataMutex.Lock()
+	value, ok := data[cmdArgs[1]]
+	dataMutex.Unlock()
+	if ok {
+		return "+" + value + "\r\n"
+	} else {
+		return "$-1\r\n"
+	}
+}
+
+func setData(cmdArgs[] string) (string){
+	dataMutex.Lock()
+	data[cmdArgs[1]] = cmdArgs[2]
+	dataMutex.Unlock()
+	return "+OK\r\n"
 }
