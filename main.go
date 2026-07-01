@@ -122,6 +122,28 @@ func decideResp(cmdArgs[] string)(string){
 			}
 			return getData(cmdArgs)
 			
+		case "INCR" :
+		if len(cmdArgs) < 2 {
+				return "-ERR wrong number of arguments for 'incr' command\r\n"
+			}
+			return modifyInteger(cmdArgs[1], 1)
+			
+		case "DECR" :
+		if len(cmdArgs) < 2 {
+				return "-ERR wrong number of arguments for 'incr' command\r\n"
+			}
+			return modifyInteger(cmdArgs[1], 1)
+
+		case "LPUSH":
+			if len(cmdArgs) < 3 {
+				return "-ERR wrong number of arguments for 'lpush' command\r\n"
+			}
+			return pushList(cmdArgs, true)
+		case "RPUSH" :
+			if len(cmdArgs) < 3 {
+				return "-ERR wrong number of arguments for 'lpush' command\r\n"
+			}
+			return pushList(cmdArgs, false)
 		case "CONFIG":
 			return "*-1\r\n"
 			
@@ -130,24 +152,98 @@ func decideResp(cmdArgs[] string)(string){
 	}
 }
 
+
+const (
+	TypeString = "string"
+	TypeList = "list"
+)
+
+type RedisObject struct {
+	Type string
+	Value interface{}
+}
 var (
-	data = make(map[string]string)
+	data = make(map[string]*RedisObject)
 	dataMutex sync.RWMutex
 )
+
+func pushList(cmdArgs[] string, isleft bool) (string) {
+	key := cmdArgs[1]
+	valueArr := cmdArgs[2:]
+
+	dataMutex.Lock()
+	defer dataMutex.Unlock()
+	obj, exists := data[key]
+	
+	var subArr[] string
+	if exists {
+		if obj.Type != TypeList {
+			return "-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"
+		}
+		subArr = obj.Value.([]string)
+	} else {
+		obj = &RedisObject{Type: TypeList}
+		data[key] = obj
+	}
+	if isleft {
+		for _, value := range valueArr{
+			subArr = append([]string{value}, subArr...)
+		}
+	} else {
+		subArr = append(subArr, valueArr...)
+	}
+	obj.Value = subArr
+	return ":" + strconv.Itoa(len(subArr)) + "\r\n"
+}
+
 func getData(cmdArgs[] string) (string){
 	dataMutex.RLock()
 	value, ok := data[cmdArgs[1]]
 	dataMutex.RUnlock()
-	if ok {
-		return "+" + value + "\r\n"
-	} else {
+	if !ok {
 		return "$-1\r\n"
 	}
+	if value.Type != TypeString{
+		return "-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"
+	}
+	strVal := value.Value.(string) 
+	return "+" + strVal + "\r\n"
 }
 
 func setData(cmdArgs[] string) (string){
 	dataMutex.Lock()
-	data[cmdArgs[1]] = cmdArgs[2]
+	data[cmdArgs[1]] = &RedisObject{
+		Type : TypeString,
+		Value: cmdArgs,
+	}
 	dataMutex.Unlock()
 	return "+OK\r\n"
+}
+
+func modifyInteger(key string, n int) (string){
+	dataMutex.Lock()
+	defer dataMutex.Unlock()
+
+	var currentInt int
+	obj, exists := data[key]
+	if exists {
+		if obj.Type != TypeString{
+			return "-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"
+		}
+		var err error
+		currentInt, err = strconv.Atoi(obj.Value.(string))
+		if err != nil {
+			return "-ERR value is not an integer or out of range\r\n"
+		}
+	} else {
+		obj = &RedisObject{
+			Type: TypeString,
+		}
+		data[key] = obj
+		currentInt = 0
+	}
+	currentInt += n
+
+	obj.Value = strconv.Itoa(currentInt)
+	return ":" + strconv.Itoa(currentInt) + "\r\n"
 }
