@@ -12,23 +12,22 @@ import (
 )
 
 func main() {
-	var wg sync.WaitGroup
 	listen, err := net.Listen("tcp", ":6379")
 	if err != nil {
 		log.Fatal(err)
 	}
+	for {
 	conn, err := listen.Accept()
 	if err != nil {
-		log.Fatal(err)
+		log.Println("accept line ", err)
+		continue
 	}
-	wg.Add(1)
-	go handleconn(conn, &wg)
-	wg.Wait()
+	go handleconn(conn)
+	}
 }
 
-func handleconn(conn net.Conn, wg *sync.WaitGroup ){
+func handleconn(conn net.Conn){
 	defer conn.Close()
-	defer wg.Done()
 	reader := bufio.NewReader(conn)
 	for {
 		line, err := reader.ReadString('\n')
@@ -38,50 +37,96 @@ func handleconn(conn net.Conn, wg *sync.WaitGroup ){
 			}
 			fmt.Println("err ", err)
 		}
-		if line[0] == '*'{
-			var data string
+		if line[0] == '*' && len(line) > 0 {
 			args, err := strconv.Atoi(strings.TrimSpace(line[1:]))
 			if err != nil {
 				fmt.Printf("atoi line error %s",err)
 				break
 			}
-			cmdArgs := []string {} 
+			cmdArgs := []string {}
+			innerLoopFailed := false
 			for range args*2 {
 				arguements, err := reader.ReadString('\n')
 				if err != nil {
-					if err == io.EOF{
-						break
-					}
-					fmt.Println("err ", err)
+					innerLoopFailed = true
+					break
 				}
-				if arguements[0] == '$'{
+				if len(arguements) > 0 && arguements[0] == '$'{
 					continue
 				}
-				data = strings.TrimSpace(arguements)
-				cmdArgs = append(cmdArgs, data)
-				fmt.Printf("%s\n",data)
+				cmdArgs = append(cmdArgs, strings.TrimSpace(arguements))
+				fmt.Printf("%s\n",strings.TrimSpace(arguements))
+			}
+			if innerLoopFailed || len(cmdArgs) == 0 {
+				break
 			}
 			resp := decideResp(cmdArgs)
-			conn.Write([]byte(resp))
+			_, err = conn.Write([]byte(resp))
+			if err != nil {
+				break
+			}
 		}
-	}	
+	}
 }
 
 func decideResp(cmdArgs[] string)(string){
-	data := cmdArgs[0]
-	switch data{
-		case "ping", "PING":
+	if len(cmdArgs) == 0 {
+			return "-ERR empty command\r\n"
+		}
+	switch strings.ToUpper(cmdArgs[0]){
+		case "PING":
 			return "+PONG\r\n"
-		case "echo", "ECHO":
+			
+		case "ECHO":
+			if len(cmdArgs) < 2 {
+				return "-ERR wrong number of arguements for 'echo' command\r\n"
+			}
 			return "+" + cmdArgs[1] + "\r\n"
-		case "set", "SET":
+			
+		case "EXISTS":
+			if len(cmdArgs) < 2 {
+				return "-ERR wrong number of arguements for 'echo' command\r\n"
+			}
+			count := 0
+			dataMutex.RLock()
+			for _, key := range cmdArgs[1:]{
+				if _, exists := data[key]; exists {
+					count++
+				}
+			}
+			dataMutex.RUnlock()
+			return ":" + strconv.Itoa(count) + "\r\n"
+		case "DEL" :
+			if len(cmdArgs) < 2 {
+				return "-ERR wrong number of arguments for 'set' command\r\n"
+			}
+			count := 0
+			dataMutex.Lock()
+			for _, key := range cmdArgs[1:]{
+				if _, exists := data[key]; exists {
+					count++
+					delete(data, key)
+				}	
+			}
+			dataMutex.Unlock()
+			return ":" + strconv.Itoa(count) + "\r\n"
+		case "SET":
+			if len(cmdArgs) < 3 {
+				return "-ERR wrong number of arguments for 'set' command\r\n"
+			}
 			return setData(cmdArgs)
-		case "get", "GET":
+			
+		case "GET":
+			if len(cmdArgs) < 2 {
+				return "-ERR wrong number of arguments for 'get' command\r\n"
+			}
 			return getData(cmdArgs)
-		case "config", "CONFIG":
-			return "*0\r\n"
+			
+		case "CONFIG":
+			return "*-1\r\n"
+			
 		default:
-			return "+65\r\n"
+			return "-ERR unknown command\r\n"
 	}
 }
 
@@ -90,9 +135,9 @@ var (
 	dataMutex sync.RWMutex
 )
 func getData(cmdArgs[] string) (string){
-	dataMutex.Lock()
+	dataMutex.RLock()
 	value, ok := data[cmdArgs[1]]
-	dataMutex.Unlock()
+	dataMutex.RUnlock()
 	if ok {
 		return "+" + value + "\r\n"
 	} else {
