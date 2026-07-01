@@ -132,7 +132,7 @@ func decideResp(cmdArgs[] string)(string){
 		if len(cmdArgs) < 2 {
 				return "-ERR wrong number of arguments for 'incr' command\r\n"
 			}
-			return modifyInteger(cmdArgs[1], 1)
+			return modifyInteger(cmdArgs[1], -1)
 
 		case "LPUSH":
 			if len(cmdArgs) < 3 {
@@ -207,14 +207,14 @@ func getData(cmdArgs[] string) (string){
 		return "-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"
 	}
 	strVal := value.Value.(string) 
-	return "+" + strVal + "\r\n"
+	return "+" + strconv.Itoa(len(strVal)) + "\r\n" + strVal + "\r\n"
 }
 
 func setData(cmdArgs[] string) (string){
 	dataMutex.Lock()
 	data[cmdArgs[1]] = &RedisObject{
 		Type : TypeString,
-		Value: cmdArgs,
+		Value: cmdArgs[2],
 	}
 	dataMutex.Unlock()
 	return "+OK\r\n"
