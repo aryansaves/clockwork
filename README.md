@@ -40,11 +40,11 @@ redis-cli -p 6379
 
 **Clockwork**
 
-![clockwork benchmark](screenshots/clockwork.png)
+![clockwork benchmark](screenshot/clockwork.png)
 
 **Redis**
 
-![redis benchmark](screenshots/redis.png)
+![redis benchmark](screenshot/redis.png)
 
 Clockwork outperforms real Redis on raw GET/SET/INCR/LPUSH throughput. Real Redis carries overhead from its full feature surface — Clockwork doesn't. LRANGE degrades linearly with range size as expected.
 
