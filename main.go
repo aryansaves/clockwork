@@ -149,48 +149,39 @@ func decideResp(cmdArgs[] string)(string){
 			return pushList(cmdArgs, false)
 
 			case "LRANGE":
-    		if len(cmdArgs) < 4 {
-        		return "-ERR wrong number of arguments for 'lrange' command\r\n"
-      		}
-        	key := cmdArgs[1]
-         	start, err1 := strconv.Atoi(cmdArgs[2])
-          	end, err2 := strconv.Atoi(cmdArgs[3])
-           	if err1 != nil || err2 != nil {
-           		return "-ERR value is not an integer or out of range\r\n"
-            }
-            dataMutex.RLock()
-            defer dataMutex.RUnlock()
-            obj, exists := data[key]
-            if !exists {
-            return "*0\r\n"
-            }
-            if obj.Type != TypeList {
-            	return "-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"
-            }
-            list := obj.Value.([]string)
-            length := len(list)
-            if end < 0 {
-            	end = length + end
-            }
-            if start < 0 {
-            	start = length + start
-            }
-            if start < 0 {
-            	start = 0
-            }
-            if end >= length {
-            	end = length - 1
-            }
-            if start > end {
-            return "*0\r\n"
-            }
-            slice := list[start : end+1]
-            var sb strings.Builder
-            sb.WriteString("*" + strconv.Itoa(len(slice)) + "\r\n")
-            for _, v := range slice {
-            	sb.WriteString("$" + strconv.Itoa(len(v)) + "\r\n" + v + "\r\n")
-            }
-            return sb.String()
+    	if len(cmdArgs) < 4 {
+        	return "-ERR wrong number of arguments for 'lrange' command\r\n"
+     	}
+      	start, err1 := strconv.Atoi(cmdArgs[2])
+       	end, err2 := strconv.Atoi(cmdArgs[3])
+        if err1 != nil || err2 != nil {
+        	return "-ERR value is not an integer or out of range\r\n"
+        }
+        dataMutex.RLock()
+        defer dataMutex.RUnlock()
+        obj, exists := data[cmdArgs[1]]
+        if !exists {
+        	return "*0\r\n"
+        }
+        if obj.Type != TypeList {
+        	return "-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"
+        }
+        list := obj.Value.([]string)
+        n := len(list)
+        if start < 0 { start = n + start }
+        if end < 0 { end = n + end }
+        if start < 0 { start = 0 }
+        if end >= n { end = n - 1 }
+        if start > end {
+        	return "*0\r\n"
+        }
+        var sb strings.Builder
+        sb.WriteString("*" + strconv.Itoa(end-start+1) + "\r\n")
+        for i := start; i <= end; i++ {
+        	v := list[n-1-i] 
+         	sb.WriteString("$" + strconv.Itoa(len(v)) + "\r\n" + v + "\r\n")
+        }
+        return sb.String()
     
 		case "CONFIG":
 			return "*0\r\n"
@@ -240,11 +231,13 @@ func pushList(cmdArgs[] string, isleft bool) (string) {
 		data[key] = obj
 	}
 	if isleft {
-		for _, value := range valueArr{
-			subArr = append([]string{value}, subArr...)
-		}
+    	subArr = append(subArr, valueArr...)  
 	} else {
-		subArr = append(subArr, valueArr...)
+    	reversed := make([]string, len(valueArr))
+     	for i, v := range valueArr {
+        	reversed[len(valueArr)-1-i] = v
+      	}
+       subArr = append(reversed, subArr...) 
 	}
 	obj.Value = subArr
 	return ":" + strconv.Itoa(len(subArr)) + "\r\n"
