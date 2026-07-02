@@ -1,0 +1,12 @@
+{
+  "name1": {
+    "Type": "string",
+    "Value": "aryan",
+    "TTL": "0001-01-01T00:00:00Z"
+  },
+  "name2": {
+    "Type": "string",
+    "Value": "arav",
+    "TTL": "0001-01-01T00:00:00Z"
+  }
+}

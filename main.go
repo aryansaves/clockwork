@@ -2,10 +2,12 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,6 +15,7 @@ import (
 )
 
 func main() {
+	loadDatabase()
 	listen, err := net.Listen("tcp", ":6379")
 	if err != nil {
 		log.Fatal(err)
@@ -86,27 +89,27 @@ func decideResp(cmdArgs[] string)(string){
 			
 		case "EXISTS":
 			if len(cmdArgs) < 2 {
-				return "-ERR wrong number of arguements for 'echo' command\r\n"
-			}
-			count := 0
-			dataMutex.RLock()
-			for _, key := range cmdArgs[1:]{
-				if _, exists := data[key]; exists {
-					count++
-				}
-			}
-			dataMutex.RUnlock()
-			return ":" + strconv.Itoa(count) + "\r\n"
-		case "DEL" :
-			if len(cmdArgs) < 2 {
-				return "-ERR wrong number of arguments for 'set' command\r\n"
+				return "-ERR wrong number of arguements for 'exists' command\r\n"
 			}
 			count := 0
 			dataMutex.Lock()
 			for _, key := range cmdArgs[1:]{
-				if _, exists := data[key]; exists {
+				if checkExpiration(key) {
 					count++
+				}
+			}
+			dataMutex.Unlock()
+			return ":" + strconv.Itoa(count) + "\r\n"
+		case "DEL" :
+			if len(cmdArgs) < 2 {
+				return "-ERR wrong number of arguments for 'del' command\r\n"
+			}
+			count := 0
+			dataMutex.Lock()
+			for _, key := range cmdArgs[1:]{
+				if checkExpiration(key) {
 					delete(data, key)
+					count++
 				}	
 			}
 			dataMutex.Unlock()
@@ -131,7 +134,7 @@ func decideResp(cmdArgs[] string)(string){
 			
 		case "DECR" :
 		if len(cmdArgs) < 2 {
-				return "-ERR wrong number of arguments for 'incr' command\r\n"
+				return "-ERR wrong number of arguments for 'decr' command\r\n"
 			}
 			return modifyInteger(cmdArgs[1], -1)
 
@@ -147,7 +150,9 @@ func decideResp(cmdArgs[] string)(string){
 			return pushList(cmdArgs, false)
 		case "CONFIG":
 			return "*-1\r\n"
-			
+
+		case "SAVE":
+			return saveDatabase()
 		default:
 			return "-ERR unknown command\r\n"
 	}
@@ -175,6 +180,9 @@ func pushList(cmdArgs[] string, isleft bool) (string) {
 
 	dataMutex.Lock()
 	defer dataMutex.Unlock()
+
+	checkExpiration(key)
+	
 	obj, exists := data[key]
 	
 	var subArr[] string
@@ -199,17 +207,19 @@ func pushList(cmdArgs[] string, isleft bool) (string) {
 }
 
 func getData(cmdArgs[] string) (string){
-	dataMutex.RLock()
-	value, ok := data[cmdArgs[1]]
-	dataMutex.RUnlock()
-	if !ok {
+	dataMutex.Lock()
+	defer dataMutex.Unlock()
+
+	if !checkExpiration(cmdArgs[1]){
 		return "$-1\r\n"
 	}
-	if value.Type != TypeString{
+	obj := data[cmdArgs[1]]
+	if obj.Type != TypeString {
 		return "-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"
 	}
-	strVal := value.Value.(string) 
-	return "+" + strconv.Itoa(len(strVal)) + "\r\n" + strVal + "\r\n"
+	strVal := obj.Value.(string)
+	
+	return "$" + strconv.Itoa(len(strVal)) + "\r\n" + strVal + "\r\n"
 }
 
 func setData(cmdArgs[] string) (string){
@@ -257,6 +267,8 @@ func modifyInteger(key string, n int) (string){
 	dataMutex.Lock()
 	defer dataMutex.Unlock()
 
+	checkExpiration(key)
+	
 	var currentInt int
 	obj, exists := data[key]
 	if exists {
@@ -283,5 +295,33 @@ func modifyInteger(key string, n int) (string){
 
 func checkExpiration(key string) bool {
 	obj, exists := data[key]
-	
+	if !exists {
+		return false
+	}
+	if !obj.TTL.IsZero() && time.Now().After(obj.TTL){
+		delete(data, key)
+		return false
+	}
+	return true
 }
+
+func saveDatabase() (string){
+	dataMutex.Lock()
+	defer dataMutex.Unlock()
+
+	for key := range data {
+		checkExpiration(key)
+	}
+
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return "-ERR failed to serialize database state\r\n"
+	}
+	err = os.WriteFile("dump.json", jsonData, 0644)
+	if err != nil {
+		return "-ERR failed to write database file to disk\r\n"
+	}
+	return "+OK\r\n"
+}
+
+
