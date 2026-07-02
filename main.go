@@ -41,7 +41,7 @@ func handleconn(conn net.Conn){
 			}
 			fmt.Println("err ", err)
 		}
-		if line[0] == '*' && len(line) > 0 {
+		if len(line) > 0 && line[0] == '*' {
 			args, err := strconv.Atoi(strings.TrimSpace(line[1:]))
 			if err != nil {
 				fmt.Printf("atoi line error %s",err)
@@ -85,7 +85,7 @@ func decideResp(cmdArgs[] string)(string){
 			if len(cmdArgs) < 2 {
 				return "-ERR wrong number of arguements for 'echo' command\r\n"
 			}
-			return "+" + cmdArgs[1] + "\r\n"
+			return "$" + strconv.Itoa(len(cmdArgs[1])) + "\r\n" + cmdArgs[1] + "\r\n"
 			
 		case "EXISTS":
 			if len(cmdArgs) < 2 {
@@ -149,7 +149,7 @@ func decideResp(cmdArgs[] string)(string){
 			}
 			return pushList(cmdArgs, false)
 		case "CONFIG":
-			return "*-1\r\n"
+			return "*0\r\n"
 
 		case "SAVE":
 			return saveDatabase()
