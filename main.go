@@ -39,12 +39,12 @@ func handleconn(conn net.Conn){
 			if err == io.EOF{
 				break
 			}
-			fmt.Println("err ", err)
+			log.Println("err ", err)
 		}
 		if len(line) > 0 && line[0] == '*' {
 			args, err := strconv.Atoi(strings.TrimSpace(line[1:]))
 			if err != nil {
-				fmt.Printf("atoi line error %s",err)
+				log.Printf("atoi line error %s",err)
 				break
 			}
 			cmdArgs := []string {}
@@ -59,7 +59,6 @@ func handleconn(conn net.Conn){
 					continue
 				}
 				cmdArgs = append(cmdArgs, strings.TrimSpace(arguements))
-				fmt.Printf("%s\n",strings.TrimSpace(arguements))
 			}
 			if innerLoopFailed || len(cmdArgs) == 0 {
 				break
@@ -148,6 +147,51 @@ func decideResp(cmdArgs[] string)(string){
 				return "-ERR wrong number of arguments for 'lpush' command\r\n"
 			}
 			return pushList(cmdArgs, false)
+
+			case "LRANGE":
+    		if len(cmdArgs) < 4 {
+        		return "-ERR wrong number of arguments for 'lrange' command\r\n"
+      		}
+        	key := cmdArgs[1]
+         	start, err1 := strconv.Atoi(cmdArgs[2])
+          	end, err2 := strconv.Atoi(cmdArgs[3])
+           	if err1 != nil || err2 != nil {
+           		return "-ERR value is not an integer or out of range\r\n"
+            }
+            dataMutex.RLock()
+            defer dataMutex.RUnlock()
+            obj, exists := data[key]
+            if !exists {
+            return "*0\r\n"
+            }
+            if obj.Type != TypeList {
+            	return "-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"
+            }
+            list := obj.Value.([]string)
+            length := len(list)
+            if end < 0 {
+            	end = length + end
+            }
+            if start < 0 {
+            	start = length + start
+            }
+            if start < 0 {
+            	start = 0
+            }
+            if end >= length {
+            	end = length - 1
+            }
+            if start > end {
+            return "*0\r\n"
+            }
+            slice := list[start : end+1]
+            var sb strings.Builder
+            sb.WriteString("*" + strconv.Itoa(len(slice)) + "\r\n")
+            for _, v := range slice {
+            	sb.WriteString("$" + strconv.Itoa(len(v)) + "\r\n" + v + "\r\n")
+            }
+            return sb.String()
+    
 		case "CONFIG":
 			return "*0\r\n"
 
@@ -317,11 +361,17 @@ func saveDatabase() (string){
 	if err != nil {
 		return "-ERR failed to serialize database state\r\n"
 	}
-	err = os.WriteFile("dump.json", jsonData, 0644)
-	if err != nil {
-		return "-ERR failed to write database file to disk\r\n"
-	}
-	return "+OK\r\n"
+	
+	tmp := "dump.json.tmp"
+    err = os.WriteFile(tmp, jsonData, 0644)
+    if err != nil {
+        return "-ERR failed to write database file to disk\r\n"
+    }
+    
+    if err := os.Rename(tmp, "dump.json"); err != nil {
+        return "-ERR failed to finalize database file\r\n"
+    }
+    return "+OK\r\n"
 }
 
 func loadDatabase() {
