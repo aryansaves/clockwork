@@ -324,4 +324,47 @@ func saveDatabase() (string){
 	return "+OK\r\n"
 }
 
+func loadDatabase() {
+	file, err := os.ReadFile("dump.json")
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 
+		}
+		log.Println("Error reading persistence file:", err)
+		return
+	}
 
+	dataMutex.Lock()
+	defer dataMutex.Unlock()
+
+	var rawData map[string]*RedisObject
+	if err := json.Unmarshal(file, &rawData); err != nil {
+		log.Println("Error parsing persistence file structural layout:", err)
+		return
+	}
+
+	for key, obj := range rawData {
+		if !obj.TTL.IsZero() && time.Now().After(obj.TTL) {
+			continue
+		}
+
+		switch obj.Type {
+		case TypeString:
+			if strVal, ok := obj.Value.(string); ok {
+				obj.Value = strVal
+			}
+
+		case TypeList:
+			if interfaceSlice, ok := obj.Value.([]interface{}); ok {
+				stringSlice := make([]string, len(interfaceSlice))
+				for i, v := range interfaceSlice {
+					stringSlice[i] = fmt.Sprintf("%v", v)
+				}
+				obj.Value = stringSlice
+			}
+		}
+
+		data[key] = obj
+	}
+	log.Printf("Successfully restored %d keys from persistence file.\n", len(data))
+}
