@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 func main() {
@@ -161,6 +162,7 @@ const (
 type RedisObject struct {
 	Type string
 	Value interface{}
+	TTL time.Time
 }
 var (
 	data = make(map[string]*RedisObject)
@@ -211,13 +213,44 @@ func getData(cmdArgs[] string) (string){
 }
 
 func setData(cmdArgs[] string) (string){
-	dataMutex.Lock()
-	data[cmdArgs[1]] = &RedisObject{
-		Type : TypeString,
-		Value: cmdArgs[2],
+	if len(cmdArgs) < 3 {
+		return "-ERR wrong number of arguments for 'set' command\r\n"
 	}
-	dataMutex.Unlock()
-	return "+OK\r\n"
+	key := cmdArgs[1]
+	value := cmdArgs[2]
+	var tempTTL time.Time
+	for i := 3; i < len(cmdArgs); i++ {
+		flag := strings.ToUpper(cmdArgs[i])
+
+		if flag == "EX" || flag == "PX" || flag == "EXAT" || flag == "PXAT" {
+			if i+1 >= len(cmdArgs){
+				return "-ERR syntax error\r\n"
+			}
+			arg, err := strconv.Atoi(cmdArgs[i+1])
+			if err != nil {
+				return "-ERR value is not an integer or out of range\r\n"
+			}
+			switch flag {
+				case "EX" :
+					tempTTL = time.Now().Add(time.Duration(arg) * time.Second)
+				case "PX" :
+					tempTTL = time.Now().Add(time.Duration(arg) * time.Millisecond)
+				case "EXAT" :
+					tempTTL = time.Unix(int64(arg), 0)
+				case "PXAT" :
+					tempTTL = time.UnixMilli(int64(arg))
+			}
+			i++
+		}
+	}
+		dataMutex.Lock()
+		data[key] = &RedisObject{
+			Type : TypeString,
+			Value: value,
+			TTL: tempTTL,
+		}
+		dataMutex.Unlock()
+		return "+OK\r\n"
 }
 
 func modifyInteger(key string, n int) (string){
@@ -246,4 +279,9 @@ func modifyInteger(key string, n int) (string){
 
 	obj.Value = strconv.Itoa(currentInt)
 	return ":" + strconv.Itoa(currentInt) + "\r\n"
+}
+
+func checkExpiration(key string) bool {
+	obj, exists := data[key]
+	
 }
