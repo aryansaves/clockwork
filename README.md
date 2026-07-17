@@ -32,7 +32,7 @@ go run main.go
 
 ### from docker
 ```bash
-docker run -d -p 6379:6379 aryansaves/clockwork:v1.0
+docker run -d -p 6379:6379 aryansaves/clockwork:latest
 ```
 
 ### from release
