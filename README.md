@@ -4,8 +4,11 @@ this is clockwork: a Redis-compatible TCP key-value store written from scratch i
 
 it speaks RESP (Redis Serialization Protocol), so `redis-cli` and `redis-benchmark` work against it without modification. no Redis installed, no external dependencies, just the Go standard library.
 
----
 
+## Demo 
+![Demo](demo.gif)
+
+---
 ## what it supports
 
 - `GET`, `SET` with TTL flags (`EX`, `PX`, `EXAT`, `PXAT`)
@@ -20,11 +23,21 @@ it speaks RESP (Redis Serialization Protocol), so `redis-cli` and `redis-benchma
 
 ## run it
 
+### from source
 ```bash
 git clone https://github.com/aryansaves/clockwork
 cd clockwork
 go run main.go
 ```
+
+### from docker
+```bash
+docker run -d -p 6379:6379 aryansaves/clockwork:v1.0
+```
+
+### from release
+download the latest binary for your platform from [releases](https://github.com/aryansaves/clockwork/releases/latest).
+
 
 connect with `redis-cli`:
 
